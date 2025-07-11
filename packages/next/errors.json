@@ -720,5 +720,12 @@
   "719": "Failed to get source map for '%s'. This is a bug in Next.js",
   "720": "A client prerender store should not be used for a route handler.",
   "721": "Render in Browser",
-  "722": "Unable to match pathname to a dynamic route"
+  "722": "Unable to match pathname to a dynamic route",
+  "723": "cacheLife() is only available with the experimental.cacheComponents config.",
+  "724": "cacheTag() is only available with the experimental.cacheComponents config.",
+  "725": "experimental.cacheComponents",
+  "726": "Route %s couldn't be rendered statically because it used IO that was not cached. See more info here: https://nextjs.org/docs/messages/cache-components",
+  "727": "CacheSignal cannot be used in the edge runtime, because `cacheComponents` does not support it.",
+  "728": "\\`experimental.ppr\\` can not be \\`%s\\` when \\`experimental.cacheComponents\\` is \\`true\\`. PPR is implicitly enabled when Cache Components is enabled.",
+  "729": "Dynamic imports should not be instrumented in the edge runtime, because `cacheComponents` doesn't support it"
 }
