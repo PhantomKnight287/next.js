@@ -215,7 +215,8 @@ export function formatIssue(issue: Issue) {
     if (importTraces.length === 1) {
       const trace = importTraces[0]
       // We only display the layer if there is more than one for the trace
-      message += `Import trace:\n${formatIssueTrace(trace, '  ', !identicalLayers(trace))}`
+      const layer = leafLayerName(trace)
+      message += `Import trace${layer != null ? ` [${layer}]` : ''}:\n${formatIssueTrace(trace, '  ', !identicalLayers(trace))}`
     } else {
       // We end up with multiple traces when the file with the error is reachable from multiple
       // different entry points (e.g. ssr, client)
@@ -226,9 +227,11 @@ export function formatIssue(issue: Issue) {
       for (let i = 0; i < importTraces.length; i++) {
         const trace = importTraces[i]
         const layer = leafLayerName(trace)
+        // If this is true, layer must be be present
         if (everyTraceHasADistinctRootLayer) {
           message += `  ${layer}:\n`
         } else {
+          // Otherwise use simple 1 based indices to disambiguate
           message += `  #${i + 1}`
           if (layer) {
             message += ` [${layer}]`
@@ -276,24 +279,22 @@ function formatIssueTrace(
   indent: string,
   printLayers: boolean
 ): string {
-  return (
-    items
-      .map((item) => {
-        let r = indent
-        if (item.fsName !== 'project') {
-          r += `[${item.fsName}]/`
-        } else {
-          // This is consistent with webpack's output
-          r += './'
-        }
-        r += item.path
-        if (printLayers && item.layer) {
-          r += ` [${item.layer}]`
-        }
-        return r
-      })
-      .join('\n') + '\n\n'
-  )
+  return `${items
+    .map((item) => {
+      let r = indent
+      if (item.fsName !== 'project') {
+        r += `[${item.fsName}]/`
+      } else {
+        // This is consistent with webpack's output
+        r += './'
+      }
+      r += item.path
+      if (printLayers && item.layer) {
+        r += ` [${item.layer}]`
+      }
+      return r
+    })
+    .join('\n')}\n\n`
 }
 
 export function isRelevantWarning(issue: Issue): boolean {
