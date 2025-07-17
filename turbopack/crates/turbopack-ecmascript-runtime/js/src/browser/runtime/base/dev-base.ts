@@ -606,7 +606,7 @@ function applyChunkListUpdate(update: ChunkListUpdate) {
 
       switch (chunkUpdate.type) {
         case 'added':
-          BACKEND.loadChunk(chunkUrl, { type: SourceType.Update })
+          BACKEND.loadChunkCached(chunkUrl, { type: SourceType.Update })
           break
         case 'total':
           DEV_BACKEND.reloadChunk?.(chunkUrl)
