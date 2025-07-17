@@ -383,7 +383,9 @@ pub async fn project_new(
 
         let subscriber = subscriber.with(FilterLayer::try_new(&trace).unwrap());
 
-        let internal_dir = PathBuf::from(&options.project_path).join(&options.dist_dir);
+        let internal_dir = PathBuf::from(&options.root_path)
+            .join(&options.project_path)
+            .join(&options.dist_dir);
         std::fs::create_dir_all(&internal_dir)
             .context("Unable to create .next directory")
             .unwrap();
@@ -1418,7 +1420,8 @@ pub async fn get_source_map_rope(
 
     let Some(chunk_base) = file.strip_prefix(
         &(format!(
-            "{}/{}/",
+            "{}/{}/{}",
+            container.project().await?.root_path,
             container.project().await?.project_path,
             container.project().dist_dir().await?
         )),
