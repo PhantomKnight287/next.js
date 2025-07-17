@@ -710,6 +710,7 @@ async function warmupDevRender(
 
   const renderController = new AbortController()
   const prerenderController = new AbortController()
+  const hangingPromiseController = new AbortController()
   const cacheSignal = new CacheSignal()
 
   const prerenderStore: PrerenderStore = {
@@ -718,6 +719,7 @@ async function warmupDevRender(
     rootParams,
     implicitTags,
     renderSignal: renderController.signal,
+    hangingPromiseSignal: hangingPromiseController.signal,
     controller: prerenderController,
     cacheSignal,
     dynamicTracking: null,
@@ -760,6 +762,8 @@ async function warmupDevRender(
   prerenderStore.prerenderResumeDataCache = null
   // Abort the render
   renderController.abort()
+  // Abort/reject the hanging promises
+  hangingPromiseController.abort()
 
   // We don't really want to return a result here but the stack of functions
   // that calls into renderToHTML... expects a result. We should refactor this to
@@ -2323,6 +2327,8 @@ async function spawnDynamicValidationInDev(
   // because we don't want to end the react render until all caches are filled.
   const initialServerRenderController = new AbortController()
 
+  const initialServerHangingPromiseController = new AbortController()
+
   // The cacheSignal helps us track whether caches are still filling or we are ready
   // to cut the render off.
   const cacheSignal = new CacheSignal()
@@ -2341,6 +2347,7 @@ async function spawnDynamicValidationInDev(
     rootParams,
     implicitTags,
     renderSignal: initialServerRenderController.signal,
+    hangingPromiseSignal: initialServerHangingPromiseController.signal,
     controller: initialServerPrerenderController,
     // During the initial prerender we need to track all cache reads to ensure
     // we render long enough to fill every cache it is possible to visit during
@@ -2415,6 +2422,7 @@ async function spawnDynamicValidationInDev(
 
   initialServerRenderController.abort()
   initialServerPrerenderController.abort()
+  initialServerHangingPromiseController.abort()
 
   // We don't need to continue the prerender process if we already
   // detected invalid dynamic usage in the initial prerender phase.
@@ -2453,12 +2461,15 @@ async function spawnDynamicValidationInDev(
   if (initialServerResult) {
     const initialClientRenderController = new AbortController()
     const initialClientPrerenderController = new AbortController()
+    const initialClientHangingPromiseController = new AbortController()
+
     const initialClientPrerenderStore: PrerenderStore = {
       type: 'prerender-client',
       phase: 'render',
       rootParams,
       implicitTags,
       renderSignal: initialClientRenderController.signal,
+      hangingPromiseSignal: initialClientHangingPromiseController.signal,
       controller: initialClientPrerenderController,
       // For HTML Generation the only cache tracked activity
       // is module loading, which has it's own cache signal
@@ -2541,9 +2552,12 @@ async function spawnDynamicValidationInDev(
     trackPendingModules(cacheSignal)
     await cacheSignal.cacheReady()
     initialClientRenderController.abort()
+    initialClientHangingPromiseController.abort()
   }
 
-  const finalServerController = new AbortController()
+  const finalServerRenderController = new AbortController()
+  const finalServerHangingPromiseController = new AbortController()
+
   const serverDynamicTracking = createDynamicTrackingState(
     false // isDebugDynamicAccesses
   )
@@ -2553,8 +2567,9 @@ async function spawnDynamicValidationInDev(
     phase: 'render',
     rootParams,
     implicitTags,
-    renderSignal: finalServerController.signal,
-    controller: finalServerController,
+    renderSignal: finalServerRenderController.signal,
+    hangingPromiseSignal: finalServerHangingPromiseController.signal,
+    controller: finalServerRenderController,
     // All caches we could read must already be filled so no tracking is necessary
     cacheSignal: null,
     dynamicTracking: serverDynamicTracking,
@@ -2592,7 +2607,7 @@ async function spawnDynamicValidationInDev(
             filterStackFrame,
             onError: (err: unknown) => {
               if (
-                finalServerController.signal.aborted &&
+                finalServerRenderController.signal.aborted &&
                 isPrerenderInterruptedError(err)
               ) {
                 return err.digest
@@ -2606,13 +2621,14 @@ async function spawnDynamicValidationInDev(
 
               return getDigestForWellKnownError(err)
             },
-            signal: finalServerController.signal,
+            signal: finalServerRenderController.signal,
           }
         )
         return prerenderResult
       },
       () => {
-        finalServerController.abort()
+        finalServerRenderController.abort()
+        finalServerHangingPromiseController.abort()
       }
     )
   )
@@ -2620,14 +2636,17 @@ async function spawnDynamicValidationInDev(
   const clientDynamicTracking = createDynamicTrackingState(
     false //isDebugDynamicAccesses
   )
-  const finalClientController = new AbortController()
+  const finalClientRenderController = new AbortController()
+  const finalClientHangingPromiseController = new AbortController()
+
   const finalClientPrerenderStore: PrerenderStore = {
     type: 'prerender-client',
     phase: 'render',
     rootParams,
     implicitTags,
-    renderSignal: finalClientController.signal,
-    controller: finalClientController,
+    renderSignal: finalClientRenderController.signal,
+    hangingPromiseSignal: finalClientHangingPromiseController.signal,
+    controller: finalClientRenderController,
     // No APIs require a cacheSignal through the workUnitStore during the HTML prerender
     cacheSignal: null,
     dynamicTracking: clientDynamicTracking,
@@ -2663,11 +2682,11 @@ async function spawnDynamicValidationInDev(
               nonce={nonce}
             />,
             {
-              signal: finalClientController.signal,
+              signal: finalClientRenderController.signal,
               onError: (err: unknown, errorInfo: ErrorInfo) => {
                 if (
                   isPrerenderInterruptedError(err) ||
-                  finalClientController.signal.aborted
+                  finalClientRenderController.signal.aborted
                 ) {
                   const componentStack = errorInfo.componentStack
                   if (typeof componentStack === 'string') {
@@ -2694,7 +2713,8 @@ async function spawnDynamicValidationInDev(
             }
           ),
         () => {
-          finalClientController.abort()
+          finalClientRenderController.abort()
+          finalClientHangingPromiseController.abort()
         }
       )
 
@@ -2942,6 +2962,8 @@ async function prerenderToStream(
       // because we don't want to end the react render until all caches are filled.
       const initialServerRenderController = new AbortController()
 
+      const initialServerHangingPromiseController = new AbortController()
+
       // The cacheSignal helps us track whether caches are still filling or we are ready
       // to cut the render off.
       const cacheSignal = new CacheSignal()
@@ -2969,6 +2991,7 @@ async function prerenderToStream(
         rootParams,
         implicitTags,
         renderSignal: initialServerRenderController.signal,
+        hangingPromiseSignal: initialServerHangingPromiseController.signal,
         controller: initialServerPrerenderController,
         // During the initial prerender we need to track all cache reads to ensure
         // we render long enough to fill every cache it is possible to visit during
@@ -3043,6 +3066,7 @@ async function prerenderToStream(
 
       initialServerRenderController.abort()
       initialServerPrerenderController.abort()
+      initialServerHangingPromiseController.abort()
 
       // We don't need to continue the prerender process if we already
       // detected invalid dynamic usage in the initial prerender phase.
@@ -3074,12 +3098,15 @@ async function prerenderToStream(
       if (initialServerResult) {
         const initialClientRenderController = new AbortController()
         const initialClientPrerenderController = new AbortController()
+        const initialClientHangingPromiseController = new AbortController()
+
         const initialClientPrerenderStore: PrerenderStore = {
           type: 'prerender-client',
           phase: 'render',
           rootParams,
           implicitTags,
           renderSignal: initialClientRenderController.signal,
+          hangingPromiseSignal: initialClientHangingPromiseController.signal,
           controller: initialClientPrerenderController,
           // For HTML Generation the only cache tracked activity
           // is module loading, which has it's own cache signal
@@ -3161,10 +3188,13 @@ async function prerenderToStream(
         trackPendingModules(cacheSignal)
         await cacheSignal.cacheReady()
         initialClientRenderController.abort()
+        initialClientHangingPromiseController.abort()
       }
 
       let serverIsDynamic = false
-      const finalServerController = new AbortController()
+      const finalServerRenderController = new AbortController()
+      const finalServerHangingPromiseController = new AbortController()
+
       const serverDynamicTracking = createDynamicTrackingState(
         isDebugDynamicAccesses
       )
@@ -3174,8 +3204,9 @@ async function prerenderToStream(
         phase: 'render',
         rootParams,
         implicitTags,
-        renderSignal: finalServerController.signal,
-        controller: finalServerController,
+        renderSignal: finalServerRenderController.signal,
+        hangingPromiseSignal: finalServerHangingPromiseController.signal,
+        controller: finalServerRenderController,
         // All caches we could read must already be filled so no tracking is necessary
         cacheSignal: null,
         dynamicTracking: serverDynamicTracking,
@@ -3215,14 +3246,14 @@ async function prerenderToStream(
                   onError: (err: unknown) => {
                     return serverComponentsErrorHandler(err)
                   },
-                  signal: finalServerController.signal,
+                  signal: finalServerRenderController.signal,
                 }
               )
               prerenderIsPending = false
               return prerenderResult
             },
             () => {
-              if (finalServerController.signal.aborted) {
+              if (finalServerRenderController.signal.aborted) {
                 // If the server controller is already aborted we must have called something
                 // that required aborting the prerender synchronously such as with new Date()
                 serverIsDynamic = true
@@ -3234,7 +3265,8 @@ async function prerenderToStream(
                 // there is something unfinished.
                 serverIsDynamic = true
               }
-              finalServerController.abort()
+              finalServerRenderController.abort()
+              finalServerHangingPromiseController.abort()
             }
           )
         ))
@@ -3242,14 +3274,18 @@ async function prerenderToStream(
       const clientDynamicTracking = createDynamicTrackingState(
         isDebugDynamicAccesses
       )
-      const finalClientController = new AbortController()
+
+      const finalClientRenderController = new AbortController()
+      const finalClientHangingPromiseController = new AbortController()
+
       const finalClientPrerenderStore: PrerenderStore = {
         type: 'prerender-client',
         phase: 'render',
         rootParams,
         implicitTags,
-        renderSignal: finalClientController.signal,
-        controller: finalClientController,
+        renderSignal: finalClientRenderController.signal,
+        hangingPromiseSignal: finalClientHangingPromiseController.signal,
+        controller: finalClientRenderController,
         // No APIs require a cacheSignal through the workUnitStore during the HTML prerender
         cacheSignal: null,
         dynamicTracking: clientDynamicTracking,
@@ -3284,11 +3320,11 @@ async function prerenderToStream(
                 nonce={nonce}
               />,
               {
-                signal: finalClientController.signal,
+                signal: finalClientRenderController.signal,
                 onError: (err: unknown, errorInfo: ErrorInfo) => {
                   if (
                     isPrerenderInterruptedError(err) ||
-                    finalClientController.signal.aborted
+                    finalClientRenderController.signal.aborted
                   ) {
                     const componentStack: string | undefined = (
                       errorInfo as any
@@ -3316,7 +3352,8 @@ async function prerenderToStream(
               }
             ),
           () => {
-            finalClientController.abort()
+            finalClientRenderController.abort()
+            finalClientHangingPromiseController.abort()
           }
         )
 
