@@ -695,6 +695,10 @@ impl Project {
     #[turbo_tasks::function]
     pub async fn node_root(self: Vc<Self>) -> Result<Vc<FileSystemPath>> {
         let this = self.await?;
+        println!(
+            "root={:?} project={:?} distdir={:?}",
+            this.root_path, &this.project_path, this.dist_dir
+        );
         Ok(self
             .output_fs()
             .root()
