@@ -2,11 +2,15 @@
 #![feature(arbitrary_self_types)]
 #![feature(arbitrary_self_types_pointers)]
 
+mod client_cache;
+
 use anyhow::Result;
 use turbo_rcstr::{RcStr, rcstr};
-use turbo_tasks::{ResolvedVc, Vc, duration_span, mark_session_dependent};
+use turbo_tasks::{ReadRef, ResolvedVc, Vc, duration_span, mark_session_dependent};
 use turbo_tasks_fs::FileSystemPath;
 use turbopack_core::issue::{Issue, IssueSeverity, IssueStage, OptionStyledString, StyledString};
+
+use crate::client_cache::{ClientFactory, get_cached_client};
 
 pub fn register() {
     turbo_tasks::register();
@@ -39,7 +43,7 @@ impl HttpResponseBody {
 }
 
 #[turbo_tasks::value(shared)]
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum ProxyConfig {
     Http(String),
     Https(String),
@@ -54,16 +58,35 @@ pub async fn fetch(
     user_agent: Option<RcStr>,
     proxy_option: Vc<OptionProxyConfig>,
 ) -> Result<Vc<FetchResult>> {
-    let proxy_option = &*proxy_option.await?;
+    #[derive(Clone, Eq, Hash, PartialEq)]
+    struct ClientFactoryImpl {
+        proxy_option: ReadRef<OptionProxyConfig>,
+    }
 
-    let client_builder = reqwest::Client::builder();
-    let client_builder = match proxy_option {
-        Some(ProxyConfig::Http(proxy)) => client_builder.proxy(reqwest::Proxy::http(proxy)?),
-        Some(ProxyConfig::Https(proxy)) => client_builder.proxy(reqwest::Proxy::https(proxy)?),
-        _ => client_builder,
-    };
+    impl ClientFactory for ClientFactoryImpl {
+        fn try_build(&self) -> reqwest::Result<reqwest::Client> {
+            let mut client_builder = reqwest::Client::builder();
+            match &*self.proxy_option {
+                Some(ProxyConfig::Http(proxy)) => {
+                    client_builder = client_builder.proxy(reqwest::Proxy::http(proxy)?)
+                }
+                Some(ProxyConfig::Https(proxy)) => {
+                    client_builder = client_builder.proxy(reqwest::Proxy::https(proxy)?)
+                }
+                None => {}
+            };
+            client_builder.build()
+        }
+    }
 
-    let client = client_builder.build()?;
+    let client = get_cached_client(ClientFactoryImpl {
+        proxy_option: proxy_option.await?,
+    })
+    .inspect_err(|_| {
+        // The reqwest client fails to construct if the TLS backend cannot be initialized, or the
+        // resolver cannot load the system configuration.
+        mark_session_dependent();
+    })?;
 
     let mut builder = client.get(url.as_str());
     if let Some(user_agent) = user_agent {

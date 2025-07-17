@@ -25,8 +25,10 @@ reqwest = { workspace = true, features = ["rustls-tls"] }
 
 [dependencies]
 anyhow = { workspace = true }
+quick_cache = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
+turbo-dyn-eq-hash = { workspace = true }
 turbo-rcstr = { workspace = true }
 turbo-tasks = { workspace = true }
 turbo-tasks-fs = { workspace = true }
