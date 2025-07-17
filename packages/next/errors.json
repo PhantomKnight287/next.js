@@ -720,5 +720,14 @@
   "719": "Failed to get source map for '%s'. This is a bug in Next.js",
   "720": "A client prerender store should not be used for a route handler.",
   "721": "Render in Browser",
-  "722": "Unable to match pathname to a dynamic route"
+  "722": "Unable to match pathname to a dynamic route",
+  "723": "No response from Claude",
+  "724": "Claude API error: %s %s",
+  "725": "Claude CLI execution timed out",
+  "726": "Claude AI error: %s",
+  "727": "Claude CLI execution error: %s",
+  "728": "Claude CLI exited with code %s: %s",
+  "729": "Invalid response format from Claude API",
+  "730": "Claude API error: %s",
+  "731": "AI SDK packages not installed. Run: npm install ai @ai-sdk/anthropic"
 }
